@@ -1,6 +1,6 @@
 # Fraud Detection: A Product-First Case Study
 
-**Try the interactive explainers →** [ROC vs PR curve](docs/roc_vs_pr_explainer_dark.html) · [Fraud Detection Dashboard](docs/fraud_dashboard_canvas.html) *(hosted via GitHub Pages once enabled — see below)*
+**Try the interactive dashboard →** [Fraud Detection Dashboard](fraud_dashboard_canvas.html) *(hosted via GitHub Pages once enabled — see below)*
 
 ---
 
@@ -38,9 +38,9 @@ Deploy at **threshold ≈ 0.8**: catches ~94.8% of fraud, keeps false positives 
 
 ## What's in this repo
 
-- **[`notebooks/fraud_detection_analysis.ipynb`](notebooks/fraud_detection_analysis.ipynb)** — full analysis: EDA, feature engineering, a real data-leakage catch-and-fix, model comparison, threshold/cost tradeoff, SHAP explainability
-- **[`docs/roc_vs_pr_explainer_dark.html`](docs/roc_vs_pr_explainer_dark.html)** — interactive, hostable explainer: drag the threshold slider and watch the ROC and PR curves respond, using this project's real model results
-- **`charts/`** — exported static charts (SHAP feature importance)
+- **[`fraud_detection_analysis.ipynb`](fraud_detection_analysis.ipynb)** — full analysis: EDA, feature engineering, a real data-leakage catch-and-fix, model comparison, threshold/cost tradeoff, SHAP explainability
+- **[`fraud_dashboard_canvas.html`](fraud_dashboard_canvas.html)** — interactive dashboard: drag the threshold slider and watch the ROC and PR curves respond, using this project's real model results
+- **`shap_global_importance.png`** — exported static SHAP feature importance chart
 
 ## Data
 
@@ -60,5 +60,5 @@ The raw CSVs aren't included in this repo (500MB+, and Kaggle's terms prefer dir
 
 ```bash
 pip install -r requirements.txt
-jupyter notebook notebooks/fraud_detection_analysis.ipynb
+jupyter notebook fraud_detection_analysis.ipynb
 ```
