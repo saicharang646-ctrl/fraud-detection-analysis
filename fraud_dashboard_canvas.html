@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fraud Detection Performance</title>
+    
+    <!-- Load Tailwind CSS for layout styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Load Inter Font to match the image -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111111;
+            color: #ffffff;
+        }
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px;
+            width: 12px;
+            border-radius: 4px;
+            background: #e2e8f0;
+            cursor: pointer;
+            margin-top: -10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #475569;
+            border-radius: 2px;
+        }
+        .stat-divider {
+            border-right: 1px solid #333;
+        }
+        .stat-divider:last-child {
+            border-right: none;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 280px;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex justify-center text-sm md:text-base">
+
+    <div class="w-full max-w-5xl bg-[#111111] p-4 md:p-8 rounded-xl shadow-2xl">
+        
+        <h1 class="text-3xl font-normal tracking-wide text-gray-200 mb-8">Fraud Detection Performance</h1>
+
+        <div class="space-y-12">
+            <div class="w-full">
+                <canvas id="rocCanvas"></canvas>
+            </div>
+            <div class="w-full">
+                <canvas id="prCanvas"></canvas>
+            </div>
+        </div>
+
+        <div class="mt-12 mb-10 flex flex-wrap justify-between items-end gap-y-6">
+            <div class="text-center px-4 stat-divider flex-1 min-w-[80px]">
+                <div class="text-xs text-gray-400 font-semibold tracking-wider mb-2 uppercase leading-tight">True<br>Positives<br>(TP)</div>
+                <div id="tp-val" class="text-xl font-bold">1,514</div>
+            </div>
+            <div class="text-center px-4 stat-divider flex-1 min-w-[80px]">
+                <div class="text-xs text-gray-400 font-semibold tracking-wider mb-2 uppercase leading-tight">False<br>Positives<br>(FP)</div>
+                <div id="fp-val" class="text-xl font-bold">1,945</div>
+            </div>
+            <div class="text-center px-4 stat-divider flex-1 min-w-[80px]">
+                <div class="text-xs text-gray-400 font-semibold tracking-wider mb-2 uppercase leading-tight">True<br>Negatives<br>(TN)</div>
+                <div id="tn-val" class="text-xl font-bold">255,852</div>
+            </div>
+            <div class="text-center px-4 stat-divider flex-1 min-w-[80px]">
+                <div class="text-xs text-gray-400 font-semibold tracking-wider mb-2 uppercase leading-tight">False<br>Negatives<br>(FN)</div>
+                <div id="fn-val" class="text-xl font-bold">24</div>
+            </div>
+            
+            <div class="w-2 hidden md:block"></div>
+
+            <div class="text-center px-4 stat-divider flex-1 min-w-[80px]">
+                <div class="text-xs text-gray-400 font-semibold tracking-wider mb-2 uppercase leading-tight mt-6">Recall</div>
+                <div id="recall-val" class="text-xl font-bold">98.4%</div>
+            </div>
+            <div class="text-center px-4 stat-divider flex-1 min-w-[80px]">
+                <div class="text-xs text-gray-400 font-semibold tracking-wider mb-2 uppercase leading-tight mt-6">Precision</div>
+                <div id="precision-val" class="text-xl font-bold">43.8%</div>
+            </div>
+            <div class="text-center px-4 flex-1 min-w-[80px]">
+                <div class="text-xs text-gray-400 font-semibold tracking-wider mb-2 uppercase leading-tight mt-6">FPR</div>
+                <div id="fpr-val" class="text-xl font-bold">0.75%</div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-6 bg-[#1a1a1a] p-4 rounded-xl">
+            <label class="text-gray-300 font-semibold tracking-wide uppercase text-sm">Threshold</label>
+            <input type="range" id="thresholdSlider" min="0" max="1" step="0.01" value="0.50" class="flex-grow">
+            <div class="bg-[#222] border border-gray-700 px-4 py-2 rounded-lg text-white font-mono text-lg min-w-[60px] text-center shadow-inner">
+                <span id="threshold-val">0.50</span>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const TOTAL_FRAUD = 1538;
+        const TOTAL_LEGIT = 257797;
+
+        let currentThreshold = 0.50;
+        let curveData = [];
+
+        // REAL confusion-matrix values measured directly from the trained XGBoost
+        // model on the held-out test set, at 99 real thresholds (0.01 to 0.99).
+        // No interpolation needed between points -- every single one is measured.
+        const realPoints = [{"t": 0.01, "tp": 1536, "fp": 27850}, {"t": 0.02, "tp": 1534, "fp": 18475}, {"t": 0.03, "tp": 1533, "fp": 14229}, {"t": 0.04, "tp": 1533, "fp": 11749}, {"t": 0.05, "tp": 1531, "fp": 10128}, {"t": 0.06, "tp": 1530, "fp": 9020}, {"t": 0.07, "tp": 1530, "fp": 8213}, {"t": 0.08, "tp": 1530, "fp": 7545}, {"t": 0.09, "tp": 1530, "fp": 7025}, {"t": 0.1, "tp": 1529, "fp": 6579}, {"t": 0.11, "tp": 1528, "fp": 6179}, {"t": 0.12, "tp": 1528, "fp": 5856}, {"t": 0.13, "tp": 1526, "fp": 5540}, {"t": 0.14, "tp": 1526, "fp": 5279}, {"t": 0.15, "tp": 1526, "fp": 5021}, {"t": 0.16, "tp": 1526, "fp": 4775}, {"t": 0.17, "tp": 1526, "fp": 4600}, {"t": 0.18, "tp": 1526, "fp": 4437}, {"t": 0.19, "tp": 1526, "fp": 4280}, {"t": 0.2, "tp": 1525, "fp": 4139}, {"t": 0.21, "tp": 1525, "fp": 4019}, {"t": 0.22, "tp": 1524, "fp": 3900}, {"t": 0.23, "tp": 1523, "fp": 3782}, {"t": 0.24, "tp": 1523, "fp": 3660}, {"t": 0.25, "tp": 1522, "fp": 3560}, {"t": 0.26, "tp": 1521, "fp": 3456}, {"t": 0.27, "tp": 1520, "fp": 3368}, {"t": 0.28, "tp": 1520, "fp": 3288}, {"t": 0.29, "tp": 1520, "fp": 3207}, {"t": 0.3, "tp": 1519, "fp": 3118}, {"t": 0.31, "tp": 1518, "fp": 3036}, {"t": 0.32, "tp": 1518, "fp": 2949}, {"t": 0.33, "tp": 1517, "fp": 2852}, {"t": 0.34, "tp": 1516, "fp": 2768}, {"t": 0.35, "tp": 1516, "fp": 2681}, {"t": 0.36, "tp": 1516, "fp": 2602}, {"t": 0.37, "tp": 1516, "fp": 2538}, {"t": 0.38, "tp": 1516, "fp": 2476}, {"t": 0.39, "tp": 1516, "fp": 2410}, {"t": 0.4, "tp": 1516, "fp": 2368}, {"t": 0.41, "tp": 1516, "fp": 2305}, {"t": 0.42, "tp": 1516, "fp": 2262}, {"t": 0.43, "tp": 1516, "fp": 2225}, {"t": 0.44, "tp": 1515, "fp": 2170}, {"t": 0.45, "tp": 1515, "fp": 2125}, {"t": 0.46, "tp": 1515, "fp": 2091}, {"t": 0.47, "tp": 1514, "fp": 2047}, {"t": 0.48, "tp": 1514, "fp": 2014}, {"t": 0.49, "tp": 1514, "fp": 1978}, {"t": 0.5, "tp": 1514, "fp": 1945}, {"t": 0.51, "tp": 1514, "fp": 1899}, {"t": 0.52, "tp": 1514, "fp": 1861}, {"t": 0.53, "tp": 1511, "fp": 1810}, {"t": 0.54, "tp": 1511, "fp": 1772}, {"t": 0.55, "tp": 1511, "fp": 1744}, {"t": 0.56, "tp": 1511, "fp": 1704}, {"t": 0.57, "tp": 1511, "fp": 1666}, {"t": 0.58, "tp": 1510, "fp": 1636}, {"t": 0.59, "tp": 1510, "fp": 1594}, {"t": 0.6, "tp": 1510, "fp": 1559}, {"t": 0.61, "tp": 1510, "fp": 1524}, {"t": 0.62, "tp": 1510, "fp": 1491}, {"t": 0.63, "tp": 1509, "fp": 1456}, {"t": 0.64, "tp": 1509, "fp": 1429}, {"t": 0.65, "tp": 1509, "fp": 1397}, {"t": 0.66, "tp": 1509, "fp": 1360}, {"t": 0.67, "tp": 1509, "fp": 1337}, {"t": 0.68, "tp": 1507, "fp": 1302}, {"t": 0.69, "tp": 1507, "fp": 1276}, {"t": 0.7, "tp": 1506, "fp": 1249}, {"t": 0.71, "tp": 1506, "fp": 1219}, {"t": 0.72, "tp": 1504, "fp": 1189}, {"t": 0.73, "tp": 1502, "fp": 1155}, {"t": 0.74, "tp": 1500, "fp": 1125}, {"t": 0.75, "tp": 1499, "fp": 1095}, {"t": 0.76, "tp": 1498, "fp": 1070}, {"t": 0.77, "tp": 1497, "fp": 1042}, {"t": 0.78, "tp": 1497, "fp": 1009}, {"t": 0.79, "tp": 1492, "fp": 985}, {"t": 0.8, "tp": 1490, "fp": 953}, {"t": 0.81, "tp": 1488, "fp": 912}, {"t": 0.82, "tp": 1485, "fp": 877}, {"t": 0.83, "tp": 1483, "fp": 848}, {"t": 0.84, "tp": 1479, "fp": 806}, {"t": 0.85, "tp": 1477, "fp": 773}, {"t": 0.86, "tp": 1473, "fp": 743}, {"t": 0.87, "tp": 1468, "fp": 707}, {"t": 0.88, "tp": 1463, "fp": 678}, {"t": 0.89, "tp": 1459, "fp": 643}, {"t": 0.9, "tp": 1458, "fp": 603}, {"t": 0.91, "tp": 1451, "fp": 554}, {"t": 0.92, "tp": 1446, "fp": 505}, {"t": 0.93, "tp": 1437, "fp": 469}, {"t": 0.94, "tp": 1435, "fp": 422}, {"t": 0.95, "tp": 1426, "fp": 352}, {"t": 0.96, "tp": 1407, "fp": 293}, {"t": 0.97, "tp": 1386, "fp": 226}, {"t": 0.98, "tp": 1352, "fp": 160}, {"t": 0.99, "tp": 1245, "fp": 52}];
+
+        function getMetrics(t) {
+            // find nearest real measured point (points are spaced every 0.01, so this is exact)
+            let closest = realPoints[0];
+            let minDiff = Math.abs(t - closest.t);
+            for (const p of realPoints) {
+                const diff = Math.abs(t - p.t);
+                if (diff < minDiff) { minDiff = diff; closest = p; }
+            }
+            const tp = closest.tp, fp = closest.fp;
+            const fn = TOTAL_FRAUD - tp;
+            const tn = TOTAL_LEGIT - fp;
+            const recall = tp / TOTAL_FRAUD;
+            const precision = (tp + fp) === 0 ? 1 : tp / (tp + fp);
+            const fpr = fp / TOTAL_LEGIT;
+            return { t: closest.t, tp, fp, fn, tn, recall, precision, fpr };
+        }
+
+        function generateCurveData() {
+            curveData = [];
+            for (let i = 0; i <= 100; i++) {
+                curveData.push(getMetrics(i / 100));
+            }
+        }
+
+        function setupCanvas(canvasId) {
+            const canvas = document.getElementById(canvasId);
+            const rect = canvas.getBoundingClientRect();
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            
+            return { canvas, ctx, width: rect.width, height: rect.height };
+        }
+
+        function drawChart(canvasId, type) {
+            const { ctx, width, height } = setupCanvas(canvasId);
+            ctx.clearRect(0, 0, width, height);
+
+            const padLeft = 40;
+            const padRight = 20;
+            const padTop = 30;
+            const padBottom = 30;
+            
+            const plotW = width - padLeft - padRight;
+            const plotH = height - padTop - padBottom;
+
+            ctx.fillStyle = '#9ca3af';
+            ctx.font = '10px Inter';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            
+            for (let i = 0; i <= 10; i += 2) {
+                let val = i / 10;
+                let y = padTop + plotH - (val * plotH);
+                ctx.fillText(val.toFixed(1), padLeft - 10, y);
+            }
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            for (let i = 0; i <= 10; i += 1) {
+                let val = i / 10;
+                let x = padLeft + (val * plotW);
+                ctx.fillText(val.toFixed(1), x, padTop + plotH + 10);
+            }
+
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(padLeft, padTop);
+            ctx.lineTo(padLeft, padTop + plotH);
+            ctx.lineTo(padLeft + plotW, padTop + plotH);
+            ctx.stroke();
+
+            ctx.fillStyle = '#d1d5db';
+            if (type === 'ROC') {
+                ctx.textAlign = 'left';
+                ctx.fillText('Recall (True Positive Rate) ↑', padLeft, padTop - 15);
+                ctx.textAlign = 'right';
+                ctx.fillText('False Positive Rate (FPR) →', padLeft + plotW, padTop + plotH + 25);
+            } else {
+                ctx.textAlign = 'left';
+                ctx.fillText('Precision ↑', padLeft, padTop - 15);
+                ctx.textAlign = 'right';
+                ctx.fillText('Recall →', padLeft + plotW, padTop + plotH + 25);
+            }
+
+            if (type === 'ROC') {
+                ctx.strokeStyle = '#6b7280';
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(padLeft, padTop + plotH);
+                ctx.lineTo(padLeft + plotW, padTop);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 3.5;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            
+            curveData.forEach((m, i) => {
+                let xVal = type === 'ROC' ? m.fpr : m.recall;
+                let yVal = type === 'ROC' ? m.recall : m.precision;
+                
+                let x = padLeft + (xVal * plotW);
+                let y = padTop + plotH - (yVal * plotH);
+
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            let currentM = getMetrics(currentThreshold);
+            let currXVal = type === 'ROC' ? currentM.fpr : currentM.recall;
+            let currYVal = type === 'ROC' ? currentM.recall : currentM.precision;
+            let pX = padLeft + (currXVal * plotW);
+            let pY = padTop + plotH - (currYVal * plotH);
+
+            ctx.fillStyle = '#fca5a5';
+            ctx.beginPath();
+            ctx.arc(pX, pY, 7, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px Inter';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(`T: ${currentThreshold.toFixed(2)}`, pX, pY - 12);
+        }
+
+        function updateDOMStats() {
+            const m = getMetrics(currentThreshold);
+            
+            document.getElementById('tp-val').innerText = m.tp.toLocaleString();
+            document.getElementById('fp-val').innerText = m.fp.toLocaleString();
+            document.getElementById('tn-val').innerText = m.tn.toLocaleString();
+            document.getElementById('fn-val').innerText = m.fn.toLocaleString();
+            
+            document.getElementById('recall-val').innerText = (m.recall * 100).toFixed(1) + '%';
+            document.getElementById('precision-val').innerText = (m.precision * 100).toFixed(1) + '%';
+            document.getElementById('fpr-val').innerText = (m.fpr * 100).toFixed(2) + '%';
+            
+            document.getElementById('threshold-val').innerText = currentThreshold.toFixed(2);
+        }
+
+        function updateDashboard() {
+            updateDOMStats();
+            drawChart('rocCanvas', 'ROC');
+            drawChart('prCanvas', 'PR');
+        }
+
+        generateCurveData();
+        
+        document.getElementById('thresholdSlider').addEventListener('input', (e) => {
+            currentThreshold = parseFloat(e.target.value);
+            updateDashboard();
+        });
+
+        window.addEventListener('resize', updateDashboard);
+
+        document.fonts.ready.then(() => {
+            updateDashboard();
+        });
+
+    </script>
+</body>
+</html>
